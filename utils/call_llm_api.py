@@ -1,9 +1,13 @@
 import os
+import time
 from datetime import datetime
 import json
 import requests
 import re
 from openai import OpenAI
+from google import genai
+from google.genai import types as genai_types
+import anthropic
 
 from dotenv import load_dotenv
 
@@ -20,10 +24,13 @@ except ImportError:
 
 # Read API keys from environment variables for better security
 # Before running, ensure you have set the following environment variables:
-# OPENROUTER_API_KEY, OPENAI_API_KEY
+# OPENROUTER_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY
 keys = {
     'or': os.getenv("OPENROUTER_API_KEY"),
     'oa': os.getenv("OPENAI_API_KEY"),
+    'ga': os.getenv("GEMINI_API_KEY"),
+    'an': os.getenv("ANTHROPIC_API_KEY"),
+    'lo': "local",  # ollama runs locally, no API key needed
 }
 
 # development: economic use for development stage / final evaluation
@@ -38,16 +45,22 @@ api_source_mapping = {
     "gpt5mini": {"oa": "gpt-5-mini-2025-08-07", "or": "openai/gpt-5-mini"}, #formal-LRM 
 
     # Non-OpenAI models:
-    "gem25f": {"or": "google/gemini-2.5-flash"}, #development-LRM
-    "gem25p": {"or": "google/gemini-2.5-pro"}, #formal-LRM
+    "gem25f": {"ga": "gemini-2.5-flash", "or": "google/gemini-2.5-flash"}, #development-LRM
+    "gem25p": {"ga": "gemini-2.5-pro", "or": "google/gemini-2.5-pro"}, #formal-LRM
 
-    "qwen3-235b": {"or": "qwen/qwen3-235b-a22b"}, #formal-LRM
-    "qwq-32b": {"or": "qwen/qwq-32b"}, #development-LRM
 
     "dsv3": {"or": "deepseek/deepseek-chat-v3-0324"}, #formal-LLM
     "dsr1": {"or": "deepseek/deepseek-r1-0528"}, #formal-LRM
 
     "nemotron-ultra": {"or": "nvidia/llama-3.1-nemotron-ultra-253b-v1"}, #development-LRM
+
+    # Anthropic Claude models
+    "cs46": {"an": "claude-sonnet-4-6"},           #development-LLM
+    "cs46-think": {"an": "claude-sonnet-4-6"},      #development-LRM (extended thinking)
+    "ch45": {"an": "claude-haiku-4-5-20251001"},    #development-LLM (Haiku, cheapest)
+
+    # Local models via ollama (run `ollama serve` before using)
+    "qwen2.5-7b": {"lo": "qwen2.5:7b"},            #local-LLM
 }
 
 def resolve_model_and_source(model_name, keys):
@@ -65,9 +78,21 @@ def resolve_model_and_source(model_name, keys):
     if keys.get('oa') and provider_map.get('oa'):
         return 'oa', provider_map['oa']
 
+    # Use Google AI (Gemini native) if key exists and mapping available
+    if keys.get('ga') and provider_map.get('ga'):
+        return 'ga', provider_map['ga']
+
+    # Use Anthropic native if key exists and mapping available
+    if keys.get('an') and provider_map.get('an'):
+        return 'an', provider_map['an']
+
     # Otherwise use OpenRouter if key exists and mapping available
     if keys.get('or') and provider_map.get('or'):
         return 'or', provider_map['or']
+
+    # Use local ollama if available
+    if keys.get('lo') and provider_map.get('lo'):
+        return 'lo', provider_map['lo']
 
     # No usable key/mapping combination found
     raise ValueError(
@@ -274,9 +299,119 @@ def call_llm_api(messages, model_name, keys=keys, temperature=0.4, trial_info=No
             print(f"[Trial {trial_id}] OA API error: {e}")
             raise e
     
+    elif api_source == "ga":
+        try:
+            client = genai.Client(api_key=keys['ga'])
+
+            # Separate system message from chat history
+            system_instruction = None
+            contents = []
+            for msg in messages:
+                if msg["role"] == "system":
+                    system_instruction = msg["content"]
+                else:
+                    role = "user" if msg["role"] == "user" else "model"
+                    contents.append(
+                        genai_types.Content(
+                            role=role,
+                            parts=[genai_types.Part(text=msg["content"])]
+                        )
+                    )
+
+            config = genai_types.GenerateContentConfig(
+                temperature=temperature,
+                system_instruction=system_instruction,
+            )
+
+            for attempt in range(5):
+                try:
+                    response = client.models.generate_content(
+                        model=full_model_name,
+                        contents=contents,
+                        config=config,
+                    )
+                    break
+                except genai.errors.ClientError as api_err:
+                    if "429" in str(api_err) and attempt < 4:
+                        wait = 60
+                        print(f"[Trial {trial_id}] Rate limit hit, waiting {wait}s (attempt {attempt+1}/5)...")
+                        time.sleep(wait)
+                    else:
+                        raise
+
+            content = response.text
+            usage = response.usage_metadata
+            tokens = usage.candidates_token_count if usage else len(content.split())
+        except Exception as e:
+            print(f"[Trial {trial_id}] Gemini API error: {e}")
+            raise e
+
+    elif api_source == "an":
+        try:
+            client = anthropic.Anthropic(api_key=keys['an'])
+
+            # Separate system message from the conversation history
+            system_instruction = ""
+            an_messages = []
+            for msg in messages:
+                if msg["role"] == "system":
+                    system_instruction = msg["content"]
+                else:
+                    an_messages.append({"role": msg["role"], "content": msg["content"]})
+
+            is_thinking = model_name.endswith("-think")
+
+            if is_thinking:
+                response = client.messages.create(
+                    model=full_model_name,
+                    max_tokens=16000,
+                    temperature=1,  # required for extended thinking
+                    system=system_instruction,
+                    messages=an_messages,
+                    thinking={"type": "enabled", "budget_tokens": 10000},
+                )
+                # Extract reasoning and answer from response blocks
+                reasoning_content = ""
+                content = ""
+                for block in response.content:
+                    if block.type == "thinking":
+                        reasoning_content += block.thinking
+                    elif block.type == "text":
+                        content += block.text
+            else:
+                response = client.messages.create(
+                    model=full_model_name,
+                    max_tokens=8096,
+                    temperature=temperature,
+                    system=system_instruction,
+                    messages=an_messages,
+                )
+                content = response.content[0].text
+                reasoning_content = None
+
+            tokens = response.usage.output_tokens
+        except Exception as e:
+            print(f"[Trial {trial_id}] Anthropic API error: {e}")
+            raise e
+
+    elif api_source == "lo":
+        try:
+            client = OpenAI(base_url="http://localhost:11434/v1", api_key="ollama")
+            completion = client.chat.completions.create(
+                model=full_model_name,
+                messages=messages,
+                temperature=temperature
+            )
+            content = completion.choices[0].message.content
+            reasoning_content = None
+            tokens = completion.usage.completion_tokens
+        except Exception as e:
+            print(f"[Trial {trial_id}] Ollama error (is `ollama serve` running?): {e}")
+            raise e
+
     else:
         raise ValueError(f"Unknown API source: {api_source}")
-    
+
     return content, reasoning_content, tokens
 
 
