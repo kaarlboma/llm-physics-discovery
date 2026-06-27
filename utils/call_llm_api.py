@@ -4,12 +4,27 @@ from datetime import datetime
 import json
 import requests
 import re
-from openai import OpenAI
-from google import genai
-from google.genai import types as genai_types
-import anthropic
+try:
+    from openai import OpenAI
+except ImportError:
+    OpenAI = None
 
-from dotenv import load_dotenv
+try:
+    from google import genai
+    from google.genai import types as genai_types
+except ImportError:
+    genai = None
+    genai_types = None
+
+try:
+    import anthropic
+except ImportError:
+    anthropic = None
+
+try:
+    from dotenv import load_dotenv
+except ImportError:
+    load_dotenv = lambda: None
 
 # Load environment variables from a .env file if it exists
 load_dotenv()
