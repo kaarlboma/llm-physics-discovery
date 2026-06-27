@@ -44,7 +44,7 @@ MAX_TURNS     = 10
 NOISE_LEVEL   = 0.0
 TEMPERATURE   = 0.7                     # slightly higher than eval for diverse rollouts
 MAX_NEW_TOKENS = 2048
-OUTPUT_BASE   = "evaluation_results"
+OUTPUT_BASE   = "/content/drive/MyDrive/NewtonBench/evaluation_results"
 RUN_VERSION   = 1                       # increment each Colab iteration
 
 
