@@ -31,7 +31,7 @@ def format_chat_history(chat_history):
     return '\n'.join(lines)
 
 def write_fail_result_with_retries(args, final_error, retry_history, func_sig):
-    trial_id, noise_level, model_name, module_name, difficulty, system, law_version, trial_dir, max_retries, judge_model_name, agent_backend = args
+    trial_id, noise_level, model_name, module_name, difficulty, system, law_version, trial_dir, max_retries, judge_model_name, agent_backend, custom_system_prompt = args
     fail_result = {
         "trial_id": trial_id,
         "module_name": module_name,
@@ -84,7 +84,7 @@ def run_trial(args):
     - A `run_experiment_for_module(...)` function.
     - An `evaluate_law(str)` function.
     """
-    trial_id, noise_level, model_name, module_name, difficulty, system, law_version, trial_dir, max_retries, judge_model_name, agent_backend = args
+    trial_id, noise_level, model_name, module_name, difficulty, system, law_version, trial_dir, max_retries, judge_model_name, agent_backend, custom_system_prompt = args
     print(f"Starting trial {trial_id} for module '{module_name}' with {model_name}, noise {noise_level} (equation difficulty: {difficulty}, model system: {system}, law version: {law_version}, backend: {agent_backend}")
     
     retry_history = []
@@ -113,7 +113,8 @@ def run_trial(args):
                     difficulty=difficulty,
                     system=system,
                     law_version=law_version,
-                    trial_info=trial_info
+                    trial_info=trial_info,
+                    custom_system_prompt=custom_system_prompt,
                 )
             else:
                 exploration_result = conduct_exploration(
@@ -123,7 +124,8 @@ def run_trial(args):
                     difficulty=difficulty,
                     system=system,
                     law_version=law_version,
-                    trial_info=trial_info
+                    trial_info=trial_info,
+                    custom_system_prompt=custom_system_prompt,
                 )
 
             # 2. Evaluate the submitted law using the module's specific evaluator
@@ -224,10 +226,17 @@ def run_experiment_for_version(cli_args, module, law_version, num_trials):
     start_time = time.time()
     
     max_retries = 3
-    judge_model_name = "gpt41"
+    judge_model_name = "ch45"
     
+    # Load custom system prompt from file if provided
+    custom_system_prompt = None
+    if hasattr(cli_args, 'custom_prompt_file') and cli_args.custom_prompt_file:
+        with open(cli_args.custom_prompt_file, 'r') as f:
+            custom_system_prompt = f.read()
+        print(f"Using custom system prompt from: {cli_args.custom_prompt_file}")
+
     pool_args = [
-        (i, cli_args.noise, cli_args.model_name, cli_args.module, cli_args.equation_difficulty, cli_args.model_system, law_version, trials_dir, max_retries, judge_model_name, cli_args.agent_backend)
+        (i, cli_args.noise, cli_args.model_name, cli_args.module, cli_args.equation_difficulty, cli_args.model_system, law_version, trials_dir, max_retries, judge_model_name, cli_args.agent_backend, custom_system_prompt)
         for i in range(num_trials)
     ]
     
@@ -375,6 +384,8 @@ if __name__ == "__main__":
                       help="Specific law version to use, 'all' for all versions, or None for random selection or a specific version (e.g. v0, v1, v2)")
     parser.add_argument("-b", "--agent_backend", type=str, default="vanilla_agent", choices=["vanilla_agent", "code_assisted_agent"],
                       help="Agent backend to use for exploration. Default is vanilla_agent. When code_assisted_agent is selected, LLM is equipped with <python> tool use.")
+    parser.add_argument("--custom_prompt_file", type=str, default=None,
+                      help="Path to a text file containing a custom system prompt to use instead of the default.")
     cli_args = parser.parse_args()
 
     # --- Pre-flight Check ---

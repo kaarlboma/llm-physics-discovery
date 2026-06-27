@@ -12,24 +12,38 @@ Your goal is to propose experiments, analyze the data they return, and ultimatel
 Please note that the laws of physics in this universe may differ from those in our own.
 You can perform experiments to gather data but you must follow the protocol strictly.
 
+**IMPORTANT: This apparatus may resemble a physics setup you recognize from the real world. Ignore that. The constants, exponents, and functional form here are NOT what you know — they have been deliberately changed. Do not use any real-world formula as your starting hypothesis. You must discover the law purely from measurement.**
+
 **Workflow:**
 1.  Analyze the mission description provided.
 2.  Design a set of experiments to test your hypotheses.
-3.  Use the `<run_experiment>` tag to submit your experimental inputs.
-4. The system will return the results (up to 20 data points per experiment) in an <experiment_output> tag.
-    - If a returned value is nan, it indicates that the calculation encountered an error, such as:
-        - ValueError (e.g., using asin on a value outside the valid range of [-1, 1])
-        - OverflowError (e.g., using exp on an extremely large input)
-    - You may ignore any data points that return nan, as they do not contribute to valid hypothesis testing.
-    - Consider adjusting your input parameters to avoid invalid ranges and improve data coverage.
+3.  Use the `<run_experiment>` tag to submit your experimental inputs, then STOP. Write nothing after the closing </run_experiment> tag.
+4.  The system will inject the results as <experiment_output>...</experiment_output> in the next message.
+    - If a returned value is nan, it indicates a calculation error (e.g., domain errors, overflow). Adjust your inputs to avoid invalid ranges.
 5.  You can run up to {max_turns} rounds of experiments. Use them wisely so that before submitting your final law, ensure you have:
     - fully explored the experimental space
-    - Verified your hypotheses against the data
+    - Verified your hypotheses against the actual measured data
     - made the most of the available rounds to strengthen your conclusions
-6.  Only one action is allowed per round: either <run_experiment> or <final_law>.
-7.  After submitting <run_experiment>, wait for <experiment_output> before proceeding.
-8.  You should verify your hypotheses by checking if the output from the experiments matches the output from your hypotheses.
-9.  When confident, submit your final discovered law using the `<final_law>` tag. This ends the mission."""
+6.  Before spending a 3rd round refining the same hypothesis, check it against at least 5 data points you have already collected. If the prediction errors are systematic — consistently too high, too low, or growing with a variable — your equation structure is wrong. No amount of constant-tuning will fix it. Abandon it and try a fundamentally different equation structure.
+7.  For each variable you can control, compute its exponent precisely using:
+      n = log(F2 / F1) / log(x2 / x1)
+    where you vary only that variable and hold all others fixed. Do this for every variable — do not eyeball any ratio. Small errors (e.g. concluding linear when the true exponent is 2) will produce a formula that fits some points but fails broadly.
+    - If the computed exponent is consistent across different data points, the relationship is a power law with that exponent.
+    - If the computed exponent varies with the choice of data points, the relationship is not a power law — consider exponential, trigonometric, or other functional forms instead.
+8.  If a structural form fits qualitatively but not quantitatively — the shape is right but the magnitude is off — treat its coefficients as unknowns and design experiments to isolate each one. Do not abandon a correct structure just because the coefficients are wrong.
+9.  Before submitting your final law, you MUST run a verification experiment:
+    - Choose 2 parameter sets you have NOT tested before.
+    - Write your hypothesis's numerical prediction for each BEFORE running the experiment.
+    - Run the experiment and compare predicted vs actual values.
+    - Only proceed to <final_law> if your predictions match the measured outputs within 1%. If they do not match, revise your hypothesis.
+10. When confident and verified, submit your final discovered law using the `<final_law>` tag. This ends the mission.
+
+**STRICT RULES — violating these will corrupt your results:**
+- ONE action per response: either <run_experiment> OR <final_law>. Never both in the same response.
+- After writing <run_experiment>...</run_experiment>, STOP IMMEDIATELY. Do not write analysis, predictions, or any text after the closing tag.
+- NEVER write <experiment_output> yourself. The system injects it — you cannot produce it.
+- NEVER assume, estimate, or fabricate what experiment results would be. You cannot know the values in this universe without measuring them.
+- NEVER reason "the result should be X" as a substitute for running an experiment. Any law based on assumed data will fail."""
 
 def parse_experiment_request(response_text: str) -> List[Dict[str, float]]:
     """Parses the LLM's requested experiments from the <run_experiment> block (expects JSON array)."""
@@ -95,7 +109,7 @@ def _call_llm_and_process_response(messages: List[Dict[str, str]], model_name: s
     messages.append({"role": "assistant", "content": combined_content})
     return messages, tokens, response_text
 
-def conduct_exploration(module: Any, model_name: str, noise_level: float, difficulty: str = 'easy', system: str = 'vanilla_equation', law_version: str = None, max_turns: int = 10, trial_info: Dict[str, Any] = None) -> Dict[str, Any]:
+def conduct_exploration(module: Any, model_name: str, noise_level: float, difficulty: str = 'easy', system: str = 'vanilla_equation', law_version: str = None, max_turns: int = 10, trial_info: Dict[str, Any] = None, custom_system_prompt: str = None) -> Dict[str, Any]:
     """
     Manages the iterative exploration process with the LLM.
 
@@ -107,11 +121,15 @@ def conduct_exploration(module: Any, model_name: str, noise_level: float, diffic
         system: The experiment system ('vanilla_equation', 'simple_system', 'complex_system').
         max_turns: The maximum number of interaction rounds.
         trial_info: Optional trial information dictionary.
+        custom_system_prompt: Optional custom system prompt (overrides BASE_PROMPT).
 
     Returns:
         A dictionary containing the results of the exploration.
     """
-    base_prompt = BASE_PROMPT.format(max_turns=max_turns)
+    if custom_system_prompt is not None:
+        base_prompt = custom_system_prompt.format(max_turns=max_turns)
+    else:
+        base_prompt = BASE_PROMPT.format(max_turns=max_turns)
     if "nemotron" in model_name:
         base_prompt = "detailed thinking on \n" + base_prompt
     messages = [{"role": "system", "content": base_prompt}]

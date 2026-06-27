@@ -1,0 +1,67 @@
+% ── Key Findings ─────────────────────────────────────────────
+\begin{tcolorbox}[posterbox, title=Key Findings]
+  \color{bodytext}
+  \begin{itemize}
+    \setlength\itemsep{5pt}
+    \item \textbf{Modified prompt} reduced prior-knowledge reliance on
+      Bernoulli's Principle, improving exact accuracy from 0\% to 67\%
+      and RMSLE from 1.18 to 0.17
+    \item \textbf{Iterative optimizer} reduced RMSLE from 10.86 to 0.00
+      on sound speed in a single optimization cycle, shifting the agent
+      from 0 experiments to 18+ per trial
+    \item \textbf{Wikipedia scraper} extracted and validated \textbf{21
+      new physical laws} across 8 domains, ready for benchmark extension
+  \end{itemize}
+\end{tcolorbox}
+
+\vspace{0.35cm}
+
+% ── Failure Analysis ──────────────────────────────────────────
+\begin{tcolorbox}[posterbox, title=Failure Analysis]
+  \color{bodytext}\small
+  Analysis of \textbf{93 failed trials} across all modules revealed three
+  distinct failure modes:
+  \vspace{6pt}
+
+  \renewcommand{\arraystretch}{1.4}
+  \begin{tabular}{@{}l r p{6cm}@{}}
+    \hline
+    \textbf{Failure Mode} & \textbf{Share} & \textbf{Description} \\
+    \hline
+    Reliance on Prior Knowledge & 45\% & Submitted memorized real-world
+      formula with 0 experiments \\
+    Premature Exploitation      & 22\% & Stopped exploring after
+      $\leq$3 rounds despite 10 available \\
+    Wrong Functional Form       & 33\% & Explored thoroughly but
+      concluded incorrect equation structure \\
+    \hline
+  \end{tabular}
+\end{tcolorbox}
+
+\vspace{0.35cm}
+
+% ── Transfer test table ───────────────────────────────────────
+\begin{tcolorbox}[posterbox, title=Optimizer Transfer Test]
+  \color{bodytext}\small
+  Prompt optimized on \textbf{Sound Speed} then applied to unseen modules
+  without further optimization.
+  \vspace{6pt}
+
+  \renewcommand{\arraystretch}{1.4}
+  \begin{tabular}{@{}l r r r r@{}}
+    \hline
+    \textbf{Module} & \multicolumn{2}{c}{\textbf{Baseline}} &
+      \multicolumn{2}{c}{\textbf{Optimized Prompt}} \\
+     & Acc & RMSLE & Acc & RMSLE \\
+    \hline
+    Sound Speed  & 0\%  & 8.40 & 33\% & --- \\
+    Snell's Law  & 0\%  & 1.37 & 0\%  & 1.39 \\
+    Malus's Law  & 0\%  & 2.01 & 0\%  & 1.61 \\
+    \hline
+  \end{tabular}
+  \vspace{4pt}
+
+  {\itshape The optimizer reliably increased experiments run (0 $\to$ 6+),
+  indicating a genuine behavioral shift even when exact accuracy did not
+  improve.}
+\end{tcolorbox}

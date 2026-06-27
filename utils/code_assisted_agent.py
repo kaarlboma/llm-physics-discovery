@@ -13,7 +13,8 @@ def conduct_code_assisted_exploration(
     difficulty: str,
     system: str,
     law_version: str = None,
-    trial_info: Dict[str, Any] = None
+    trial_info: Dict[str, Any] = None,
+    custom_system_prompt: str = None,
 ) -> Dict[str, Any]:
     """
     Conduct physics discovery exploration using code assistant with per-turn Python call limits.
@@ -42,8 +43,12 @@ def conduct_code_assisted_exploration(
     )
 
     max_turns = 10  # Limit to prevent infinite loops
-    # Create code assisted agent-specific system prompt
-    system_prompt = create_code_assisted_system_prompt(module, difficulty, system, max_turns)
+    # Use a custom system prompt if provided (e.g. from iterative optimization),
+    # otherwise generate the default one.
+    if custom_system_prompt is not None:
+        system_prompt = custom_system_prompt
+    else:
+        system_prompt = create_code_assisted_system_prompt(module, difficulty, system, max_turns)
     
     # Initialize conversation with just the system prompt
     messages = [

@@ -10,6 +10,7 @@ __pycache__/
 # Experiment outputs
 evaluation_results/
 iterative_optimization_results/
+grpo_dataset/
 *.csv
 
 # Data and artifact files not for public distribution
